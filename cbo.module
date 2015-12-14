@@ -1,0 +1,16 @@
+<?php
+
+/**
+ * @file
+ * Contains implementation of Content Bulk Operations.
+ */
+
+define('CBO_PUBLISH', 'publish');
+define('CBO_UNPUBLISH', 'unpublish');
+
+/**
+ * Implements hook_menu().
+ */
+function cbo_menu() {
+
+}
