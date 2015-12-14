@@ -19,6 +19,7 @@ function cbo_drush_command() {
     ),
     'examples' => array(
       'drush cbos publish /var/www/file.csv ' => 'Publish all the nodes on the file /var/www/file.csv',
+      'drush cbos unpublish /var/www/file.csv ' => 'Unpublish all the nodes on the file /var/www/file.csv',
     ),
     'aliases' => array('cbos'),
   );
@@ -33,7 +34,7 @@ function cbo_drush_command() {
     'examples' => array(
       'drush cboupath /var/www/file.csv ' => 'Load nodes from the file at /var/www/file.csv to update path',
     ),
-    'aliases' => array('cboupath'),
+    'aliases' => array('cbopath'),
   );
 
   return $items;
@@ -161,7 +162,8 @@ function cbo_drush_update_content($nid_list, $action = CBO_PUBLISH) {
   switch($action) {
     case CBO_PUBLISH:
     case CBO_UNPUBLISH:
-      $db_result = db_query('UPDATE {node} SET status=%d WHERE nid IN ("%s")', array(1, $nid_list));
+      $status = $action == CBO_PUBLISH ? 1 : 0;
+      $db_result = db_query('UPDATE {node} SET status=%d WHERE nid IN (' . db_placeholders($nid_list, 'int'). ')', array_merge(array($status), $nid_list));
       if (!$db_result) {
         drush_log('Error while updating', 'error');
       }
@@ -173,7 +175,7 @@ function cbo_drush_update_content($nid_list, $action = CBO_PUBLISH) {
  * Callback for batch finish.
  */
 function cbo_drush_update_content_finished() {
-  drush_log('Updated successfully.');
+  drush_log('Updated successfully.', 'success');
 }
 
 /**
@@ -186,8 +188,7 @@ function cbo_drush_update_content_finished() {
 function cbo_drush_get_nid_from_path($path, $path_language = NULL) {
   global $language;
   $path_language = $path_language ? $path_language : $language->language;
-
-  $src_path = db_result(db_query("SELECT src FROM {url_alias} WHERE dst = '%s' AND language IN('%s', '') ORDER BY language DESC, pid DESC", array($path, $path, $path_language)));
+  $src_path = db_result(db_query("SELECT src FROM {url_alias} WHERE dst = '%s' AND language IN('%s')", array($path, $path_language)));
   $path_parts = arg(NULL, $src_path);
   if ($path_parts[0] == 'node' && is_numeric($path_parts[1]) && count($path_parts) == 2) {
     return $path_parts[1];
