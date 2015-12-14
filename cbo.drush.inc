@@ -43,23 +43,23 @@ function cbo_drush_command() {
  * Updates status of node IDs from CSV.
  *
  *
- * @param string $filepath
- *   String filename.
- *
  * @param $action
  *   Action to perform.
+ *
+ * @param string $filepath
+ *   String filename.
  *
  * @return bool
  *
  */
-function cbo_drush_change_status_from_csv($filepath, $action) {
+function cbo_drush_change_status_from_csv($action, $filepath) {
   $nid_list = cbo_drush_get_nids_from_csv($filepath);
   if (empty($nid_list)) {
     return drush_set_error(dt('No node to !action in given file.', array('!action' => $action)));
   }
 
   // Confirm delete.
-  drush_print(dt("Found !count nodes to unpublish.", array('!count' => count($nid_list))));
+  drush_print(dt("Found !count nodes to !action.", array('!count' => count($nid_list), '!action' => $action)));
 
   if (drush_confirm(dt('Do you want to !action them?', array('!action' => $action)))) {
     return _cbo_drush_update_content($nid_list, $action);
