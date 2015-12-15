@@ -9,8 +9,215 @@ define('CBO_PUBLISH', 'publish');
 define('CBO_UNPUBLISH', 'unpublish');
 
 /**
- * Implements hook_menu().
+ * Updates status of node IDs from CSV.
+ *
+ *
+ * @param $action
+ *   Action to perform.
+ *
+ * @param string $filepath
+ *   String filename.
+ *
+ * @return bool
+ *
  */
-function cbo_menu() {
+function cbo_change_status_from_csv($action, $filepath) {
+  if (empty($filepath) || !file_exists($filepath)) {
+    drupal_set_message(t('The file "%filepath" is not exists.', array('%filepath' => $filepath)), 'error');
+    return FALSE;
+  }
+  $lines = cbo_read_csv($filepath);
+  $list = cbo_get_nids_from_raw($lines);
 
+  $nid_list = $list['nodes'];
+  $error_list = $list['errors'];
+  if (empty($nid_list) && empty($error_list)) {
+    watchdog(WATCHDOG_ERROR, 'No node to !action.', array('!action' => $action));
+    return FALSE;
+  }
+
+
+  if (!empty($error_list)) {
+    // Write it to a file.
+    $error_file = cbo_get_error_filename($filepath, $action);
+    $fp = fopen($error_file, 'w+');
+    fwrite($fp, implode("\n", $error_list));
+    $replacements = array('!count' => count($nid_list), '!err_count' => count($list['errors']), '!action' => $action, '!error_file' => $error_file);
+    watchdog(WATCHDOG_INFO, "Found !count nodes to !action and !err_count invalid nid/paths. Check !error_file for the errors.", $replacements);
+  }
+  else {
+    watchdog(WATCHDOG_INFO, "Found !count nodes to !action.", array('!count' => count($nid_list), '!action' => $action));
+  }
+
+  cbo_update_content_status($nid_list, $action);
+
+//  if ($operations = _cbo_get_status_update_content_batch_operations($nid_list, $action)) {
+//    $batch = array(
+//      'operations' => $operations,
+//      'error_message' => t('Error while trying to !action your content. Please try again (BATCH_INIT_FAIL).', array('!action' => $action)),
+//    );
+//    $batch['progressive'] = FALSE;
+//    batch_set($batch);
+//    batch_process();
+//  }
+}
+
+/**
+ * Updates status of node IDs from CSV.
+ *
+ *
+ * @param $action
+ *   Action to perform.
+ *
+ * @param string $filepath
+ *   String filename.
+ *
+ * @return bool
+ *
+ */
+function cbo_change_path_from_csv($filepath) {
+  global $language;
+  $processed = array();
+  $error_list = array();
+  if (empty($filepath) || !file_exists($filepath)) {
+    drupal_set_message(t('The file "%filepath" is not exists.', array('%filepath' => $filepath)), 'error');
+    return FALSE;
+  }
+
+  $redirects = cbo_read_csv($filepath);
+  foreach ($redirects as $index => $redirect) {
+    list($source, $destination) = $redirect;
+    if (!empty($source) && !empty($destination)) {
+      $pid = db_result(db_query("SELECT pid FROM {url_alias} WHERE dst = '%s' AND language = '%s'", array($source, $language->language)));
+      if ($pid) {
+        $db_result = db_query("UPDATE {url_alias} set dst = '%s' WHERE pid = %d", array($destination, $pid));
+        if ($db_result) {
+          $processed[$index] = $redirect;
+          continue;
+        }
+      }
+    }
+
+    // If not processed, add as error.
+    $error_list[$index] = $redirect;
+  }
+
+  if (!empty($error_list)) {
+    drupal_set_message(t('Found !count invalid path(s).', array('!count' => count($error_list))), 'warning');
+  }
+  if (!empty($processed)) {
+    drupal_set_message(t('Updated !count path(s)', array('!count' => count($processed))));
+    // Clear path cache.
+    drupal_clear_path_cache();
+  }
+
+}
+
+/**
+ * Parse CSV file to get node ids.
+ *
+ * @param $filepath
+ * @return array
+ */
+function cbo_get_nids_from_raw($lines) {
+  $nid_list = array();
+  $error_list = array();
+
+  foreach ($lines as $index => $line) {
+    // We take the first element as URL/nid from the line.
+    $path = $line[0];
+    // Check if given value is nid. eg.1234
+    if (is_numeric($path)) {
+      $nid_list[$index] = $path;
+    }
+    // Check if given value is original node path e.g. node/1234
+    elseif (arg(0, $path) == 'node' && is_numeric(arg(1, $path))) {
+      $nid_list[$index] = arg(1, $path);
+    }
+    // Check if the given value is a path alias e.g. foo/bar
+    elseif ($nid = cbo_get_nid_from_alias($path)) {
+      $nid_list[$index] = $nid;
+    }
+    else {
+      $error_list[$index] = $path;
+    }
+  }
+  return array('nodes' => $nid_list, 'errors' => $error_list);
+}
+
+/**
+ * Helper to read CSV file.
+ *
+ * @param $filepath
+ * @return array|bool|string
+ */
+function cbo_read_csv($filepath) {
+  $content = '';
+
+  // Automatically detect line endings.
+  ini_set('auto_detect_line_endings', '1');
+  $handle = fopen($filepath,'r');
+  // $title = fgetcsv($handle, 4096);
+  while ($line = fgetcsv($handle, 4096)) {
+    array_walk($line, 'trim');
+    $content[] = $line;
+  }
+  return $content;
+}
+
+/**
+ * Helper to get node ID from path/alias.
+ *
+ * @param $path
+ * @param null $path_language
+ *
+ * @return null|string
+ */
+function cbo_get_nid_from_alias($path, $path_language = NULL) {
+  global $language;
+  $path_language = $path_language ? $path_language : $language->language;
+  $src_path = db_result(db_query("SELECT src FROM {url_alias} WHERE dst = '%s' AND language = '%s'", array($path, $path_language)));
+  $path_parts = arg(NULL, $src_path);
+  if ($path_parts[0] == 'node' && is_numeric($path_parts[1]) && count($path_parts) == 2) {
+    return $path_parts[1];
+  }
+  return NULL;
+}
+
+/**
+ * Performs update operations with batch set.
+ *
+ * @param array $nid_list
+ * @param string $action
+ *
+ * @return array
+ */
+function _cbo_get_status_update_content_batch_operations($nid_list, $action) {
+  // get the batch size from config.
+  $batch_size = variable_get('cbo_batch_size', 1);
+  // chunk the nids, instead of foreach.
+  $batches = array_chunk(array_unique($nid_list), $batch_size);
+  $operations = array();
+  foreach ($batches as $nids) {
+    $operations[] = array('cbo_update_content_status', array($nids, $action));
+  }
+  return $operations;
+}
+
+/**
+ * Performs status update of content.
+ *
+ * @param $nid_list
+ * @param string $action
+ *
+ * @return bool|\Drupal\Core\Database\StatementInterface|\mysqli_result|resource
+ */
+function cbo_update_content_status($nid_list, $action = CBO_PUBLISH) {
+  $status = $action == CBO_PUBLISH ? 1 : 0;
+  return $db_result = db_query('UPDATE {node} SET status=%d WHERE nid IN (' . db_placeholders($nid_list, 'int'). ')', array_merge(array($status), $nid_list));
+}
+
+function cbo_get_error_filename($origin_filepath, $action) {
+  $pathinfo = pathinfo($origin_filepath);
+  return $pathinfo['dirname'] . '/' . implode('.', array($pathinfo['filename'], $action, date('YmdHis'), $pathinfo['extension']));
 }

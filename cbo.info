@@ -2,3 +2,6 @@ name = Content Bulk Operations
 description = Allows to update multiple nodes status, path from a CSV file.
 core = 6.x
 package = CCK
+
+files[] = includes/handler/node/PathHandler.php
+files[] = includes/handler/node/StatusHandler.php
