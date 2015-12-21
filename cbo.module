@@ -32,7 +32,7 @@ function cbo_change_status_from_csv($action, $filepath) {
   $nid_list = $list['nodes'];
   $error_list = $list['errors'];
   if (empty($nid_list) && empty($error_list)) {
-    watchdog(WATCHDOG_ERROR, 'No node to !action.', array('!action' => $action));
+    drupal_set_message(t('No node to !action.', array('!action' => $action)), 'error');
     return FALSE;
   }
 
@@ -43,10 +43,10 @@ function cbo_change_status_from_csv($action, $filepath) {
     $fp = fopen($error_file, 'w+');
     fwrite($fp, implode("\n", $error_list));
     $replacements = array('!count' => count($nid_list), '!err_count' => count($list['errors']), '!action' => $action, '!error_file' => $error_file);
-    watchdog(WATCHDOG_INFO, "Found !count nodes to !action and !err_count invalid nid/paths. Check !error_file for the errors.", $replacements);
+    drupal_set_message(t("Found !count nodes to !action and !err_count invalid nid/paths. Check !error_file for the errors.", $replacements), 'error');
   }
   else {
-    watchdog(WATCHDOG_INFO, "Found !count nodes to !action.", array('!count' => count($nid_list), '!action' => $action));
+    drupal_set_message(t("Found !count nodes to !action.", array('!count' => count($nid_list), '!action' => $action)));
   }
 
   cbo_update_content_status($nid_list, $action);
@@ -176,7 +176,7 @@ function cbo_read_csv($filepath) {
 function cbo_get_nid_from_alias($path, $path_language = NULL) {
   global $language;
   $path_language = $path_language ? $path_language : $language->language;
-  $src_path = db_result(db_query("SELECT src FROM {url_alias} WHERE dst = '%s' AND language = '%s'", array($path, $path_language)));
+  $src_path = db_result(db_query("SELECT src FROM {url_alias} WHERE dst = '%s'  AND (language = '%s' OR language = '') ORDER BY language DESC", array($path, $path_language)));
   $path_parts = arg(NULL, $src_path);
   if ($path_parts[0] == 'node' && is_numeric($path_parts[1]) && count($path_parts) == 2) {
     return $path_parts[1];
