@@ -42,6 +42,7 @@ function cbo_change_status_from_csv($action, $filepath) {
     $error_file = cbo_get_error_filename($filepath, $action);
     $fp = fopen($error_file, 'w+');
     fwrite($fp, implode("\n", $error_list));
+    fclose($fp);
     $replacements = array('!count' => count($nid_list), '!err_count' => count($list['errors']), '!action' => $action, '!error_file' => $error_file);
     drupal_set_message(t("Found !count nodes to !action and !err_count invalid nid/paths. Check !error_file for the errors.", $replacements), 'error');
   }
@@ -50,16 +51,8 @@ function cbo_change_status_from_csv($action, $filepath) {
   }
 
   cbo_update_content_status($nid_list, $action);
-
-//  if ($operations = _cbo_get_status_update_content_batch_operations($nid_list, $action)) {
-//    $batch = array(
-//      'operations' => $operations,
-//      'error_message' => t('Error while trying to !action your content. Please try again (BATCH_INIT_FAIL).', array('!action' => $action)),
-//    );
-//    $batch['progressive'] = FALSE;
-//    batch_set($batch);
-//    batch_process();
-//  }
+  // @todo: add batch operation for bulk content.
+  // @see https://www.drupal.org/node/2682547
 }
 
 /**
@@ -88,7 +81,7 @@ function cbo_change_path_from_csv($filepath) {
   foreach ($redirects as $index => $redirect) {
     list($source, $destination) = $redirect;
     if (!empty($source) && !empty($destination)) {
-      $pid = db_result(db_query("SELECT pid FROM {url_alias} WHERE dst = '%s' AND language = '%s'", array($source, $language->language)));
+      $pid = db_result(db_query("SELECT pid FROM {url_alias} WHERE dst = '%s' AND language IN ('%s', '')", array($source, $language->language)));
       if ($pid) {
         $db_result = db_query("UPDATE {url_alias} set dst = '%s' WHERE pid = %d", array($destination, $pid));
         if ($db_result) {
@@ -99,11 +92,17 @@ function cbo_change_path_from_csv($filepath) {
     }
 
     // If not processed, add as error.
-    $error_list[$index] = $redirect;
+    $error_list[$index] = $source;
   }
 
   if (!empty($error_list)) {
-    drupal_set_message(t('Found !count invalid path(s).', array('!count' => count($error_list))), 'warning');
+    // Write it to a file.
+    $error_file = cbo_get_error_filename($filepath, 'path_update');
+    $fp = fopen($error_file, 'w+');
+    fwrite($fp, implode("\n", $error_list));
+    fclose($fp);
+    $replacements = array('!err_count' => count($error_list),'!error_file' => $error_file);
+    drupal_set_message(t("Found !err_count invalid path(s). Check !error_file for the errors.", $replacements), 'error');
   }
   if (!empty($processed)) {
     drupal_set_message(t('Updated !count path(s)', array('!count' => count($processed))));
