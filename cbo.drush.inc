@@ -59,7 +59,8 @@ function cbo_drush_change_status_from_csv($action, $filepath) {
     return FALSE;
   }
 
-  $list = cbo_get_nids_from_csv($filepath);
+  $lines = cbo_read_csv($filepath);
+  $list = cbo_get_nids_from_raw($lines);
 
   $nid_list = $list['nodes'];
   $error_list = $list['errors'];
