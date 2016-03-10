@@ -47,15 +47,12 @@ function cbo_change_status_from_csv($action, $filepath) {
       '!count' => count($nid_list),
       '!err_count' => count($list['errors']),
       '!action' => $action,
-      '!error_file' => $error_file
+      '!error_file' => $error_file,
     );
     drupal_set_message(t("Found !count nodes to !action and !err_count invalid nid/paths. Check !error_file for the errors.", $replacements), 'error');
   }
   else {
-    drupal_set_message(t("Found !count nodes to !action.", array(
-      '!count' => count($nid_list),
-      '!action' => $action
-    )));
+    drupal_set_message(t("Found !count nodes to !action.", array('!count' => count($nid_list), '!action' => $action)));
   }
 
   cbo_update_content_status($nid_list, $action);
@@ -84,22 +81,11 @@ function cbo_change_path_from_csv($filepath) {
   foreach ($redirects as $index => $redirect) {
     list($source, $destination) = $redirect;
     if (!empty($source) && !empty($destination)) {
-      $query = "SELECT pid
-                FROM {url_alias}
-                WHERE alias = :alias
-                AND language IN (:lng, '')";
-      $pid = db_query($query, array(
-        ':alias' => $source,
-        ':lng' => $language->language,
-      ))->fetchField();
+      $params = array(':alias' => $source, ':lng' => $language->language);
+      $pid = db_query("SELECT pid FROM {url_alias} WHERE alias = :alias AND language IN (:lng, '')", $params)->fetchField();
       if ($pid) {
-        $query = "UPDATE {url_alias}
-                  set alias = :alias
-                  WHERE pid = :pid";
-        $db_update = db_query($query, array(
-          ':alias' => $destination,
-          '::pid' => $pid,
-          ));
+        $params = array(':alias' => $destination, '::pid' => $pid);
+        $db_update = db_query('UPDATE {url_alias} set alias = :alias WHERE pid = :pid', $params);
         if ($db_update) {
           $processed[$index] = $redirect;
           continue;
@@ -195,11 +181,7 @@ function cbo_read_csv($filepath) {
  * @return null|string
  */
 function cbo_get_nid_from_alias($alias, $path_language = 'und') {
-  $query = "SELECT source
-            FROM {url_alias}
-            WHERE alias = :alias
-            AND (language = :lng OR language = '')
-            ORDER BY language DESC";
+  $query = "SELECT source FROM {url_alias} WHERE alias = :alias AND (language = :lng OR language = '') ORDER BY language DESC";
   $q = db_query($query, array(':alias' => $alias, ':lng' => $path_language));
   $source = $q->fetchField();
   $path_parts = arg(NULL, $source);
@@ -239,9 +221,7 @@ function _cbo_get_status_update_content_batch_operations($nid_list, $action) {
  */
 function cbo_update_content_status($nid_list, $action = CBO_PUBLISH) {
   $status = $action == CBO_PUBLISH ? 1 : 0;
-  $query = 'UPDATE {node}
-            SET status = :status
-            WHERE nid IN (:nid_list)';
+  $query = 'UPDATE {node} SET status = :status WHERE nid IN (:nid_list)';
   $args = array(':status' => $status, ':nid_list' => $nid_list);
   $db_result = db_query($query, $args);
   return $db_result;
